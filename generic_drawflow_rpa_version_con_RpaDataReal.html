@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Monitor de Instalaciones RPA</title>
+  <!-- Drawflow (CDN) -->
+  <link rel="stylesheet" href="https://unpkg.com/drawflow/dist/drawflow.min.css">
+  <script src="https://unpkg.com/drawflow/dist/drawflow.min.js"></script>
+  <!-- Icons -->
+  <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <style>
+    :root{
+      --bg:#0f172a;
+      --panel:#111827;
+      --muted:#1f2937;
+      --accent:#22c55e;
+      --accent-2:#3b82f6;
+      --text:#e5e7eb;
+      --text-dim:#9ca3af;
+      --danger:#ef4444;
+      --yellow:#f59e0b;
+      --card:#0b1220;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;background:linear-gradient(180deg,#0b1220,#0f172a);color:var(--text);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial}
+    .app{display:grid;grid-template-columns:280px 1fr 360px;grid-template-rows:auto 1fr;grid-template-areas:"topbar topbar topbar" "left canvas right";height:100%}
+    .topbar{grid-area:topbar;display:flex;gap:.5rem;align-items:center;padding:.6rem .8rem;border-bottom:1px solid #1f2937;background:rgba(17,24,39,.8);backdrop-filter:blur(8px);position:sticky;top:0;z-index:50}
+    .brand{font-weight:700;letter-spacing:.2px}
+    .brand small{opacity:.6;font-weight:500}
+    .btn{background:var(--muted);border:1px solid #293548;color:var(--text);padding:.45rem .7rem;border-radius:.6rem;cursor:pointer;transition:.15s;display:inline-flex;align-items:center;gap:.4rem}
+    .btn:hover{background:#243042}
+    .btn.primary{background:linear-gradient(135deg,var(--accent),#16a34a);border-color:transparent;color:#02130a;font-weight:700}
+    .btn.warn{background:linear-gradient(135deg,var(--yellow),#d97706);border-color:transparent;color:#120b02;font-weight:700}
+    .btn.ghost{background:transparent;border-color:#243042}
+    .btn:disabled{opacity:0.6;cursor:not-allowed}
+    .left{grid-area:left;padding:.6rem;border-right:1px solid #1f2937;overflow:auto}
+    .right{grid-area:right;border-left:1px solid #1f2937;display:flex;flex-direction:column;min-width:320px}
+    .panel{padding:.8rem}
+    .panel h3{margin:.2rem 0 .6rem;font-size:.95rem;color:#cbd5e1}
+    .stack{display:flex;flex-direction:column;gap:.5rem}
+    .card{background:var(--panel);border:1px solid #1f2937;border-radius:12px;padding:.75rem}
+    .muted{color:var(--text-dim);font-size:.9rem}
+    .grid{display:grid;gap:.5rem}
+    .grid.two{grid-template-columns:1fr 1fr}
+    label{font-size:.8rem;color:#bfc7d5}
+    input,select,textarea{width:100%;background:#0b1220;border:1px solid #283245;border-radius:.6rem;color:var(--text);padding:.5rem .6rem;outline:none}
+    textarea{min-height:80px;resize:vertical}
+    .chip{display:inline-flex;align-items:center;gap:.4rem;background:#0b1220;border:1px dashed #334155;color:#cbd5e1;padding:.25rem .5rem;border-radius:999px;font-size:.75rem}
+    .drag{display:grid;grid-template-columns:repeat(2,1fr);gap:.5rem}
+    .drag .node-item{background:var(--card);border:1px solid #1e293b;border-radius:.7rem;padding:.6rem;cursor:grab}
+    .drag .node-item b{display:block}
+    /* Canvas */
+    #drawflow{grid-area:canvas;height:calc(100vh - 56px);width:100%;background:radial-gradient(ellipse at 20% 0%,rgba(59,130,246,.06),transparent 40%),radial-gradient(ellipse at 80% 70%,rgba(34,197,94,.06),transparent 40%),#0b1220}
+    .canvas-wrap{grid-area:canvas}
+    
+    /* ==== Mejoras visuales nodos ==== */
+    .drawflow-node {
+      background: linear-gradient(180deg, rgba(17,24,39,0.95), rgba(11,18,32,0.95));
+      border: 1px solid rgba(148,163,184,0.2);
+      border-radius: 20px;
+      color: var(--text);
+      box-shadow: 0 4px 20px rgba(0,0,0,0.35);
+      transition: all 0.2s ease-in-out;
+      backdrop-filter: blur(10px);
+      min-width: 180px;
+	  top: 37px;
+    }
+
+    .drawflow-node:hover {
+      box-shadow: 0 6px 24px rgba(0,0,0,0.45);
+      transform: translateY(-2px);
+    }
+
+    .drawflow-node.selected {
+      outline: 2px solid var(--accent-2);
+      box-shadow: 0 0 0 4px rgba(59,130,246,0.2);
+    }
+
+    .drawflow-node.error {
+      outline: 2px solid var(--danger);
+      box-shadow: 0 0 0 4px rgba(239,68,68,0.25);
+    }
+
+    .drawflow-node.running {
+      outline: 2px solid var(--accent);
+      box-shadow: 0 0 0 4px rgba(34,197,94,0.2);
+    }
+
+    .drawflow-node.inactive {
+      opacity: 0.6;
+      filter: grayscale(70%);
+      cursor: not-allowed;
+    }
+
+    .drawflow-node.inactive .title-box {
+      background: linear-gradient(135deg, rgba(55, 65, 81, 0.9), rgba(31, 41, 55, 0.9));
+    }
+
+    .drawflow-node.inactive .status-indicator {
+      background-color: var(--text-dim);
+    }
+
+    /* T铆tulo */
+    .title-box {
+      font-weight: 600;
+      font-size: 0.95rem;
+      padding: 0.5rem 0.7rem;
+      border-bottom: 1px solid rgba(148,163,184,0.15);
+      background: linear-gradient(135deg, rgba(31,41,55,0.9), rgba(17,24,39,0.9));
+      border-radius: 16px 16px 0 0;
+      color: var(--text);
+      letter-spacing: 0.3px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .status-indicator {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background-color: var(--text-dim);
+    }
+
+    .status-indicator.running {
+      background-color: var(--accent);
+      box-shadow: 0 0 8px var(--accent);
+    }
+
+    .status-indicator.stopped {
+      background-color: var(--text-dim);
+    }
+
+    .status-indicator.error {
+      background-color: var(--danger);
+      box-shadow: 0 0 8px var(--danger);
+    }
+
+    /* Contenido */
+    .box {
+      padding: 0.65rem 0.8rem;
+    }
+
+    .box .muted {
+      font-size: 0.85rem;
+      color: var(--text-dim);
+      opacity: 0.9;
+    }
+
+    /* Logs */
+    .log{flex:1;overflow:auto;background:#0b1220;border-top:1px solid #1f2937}
+    .log pre{margin:0;padding:.75rem;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;white-space:pre-wrap}
+    .kbd{background:#111827;border:1px solid #334155;border-bottom-width:3px;padding:.1rem .35rem;border-radius:.4rem;font-size:.8rem}
+    .footer{padding:.5rem;border-top:1px solid #1f2937;display:flex;gap:.5rem;align-items:center;justify-content:space-between;background:#0f172a}
+    .link{color:#93c5fd;text-decoration:none}
+    .danger{color:#fecaca}
+    .success{color:#a7f3d0}
+    .hidden{display:none}
+    .rpa-info {margin-top: 0.5rem; font-size: 0.85rem;}
+    .rpa-info div {margin-bottom: 0.2rem;}
+    .loading {display: inline-block; width: 20px; height: 20px; border: 3px solid rgba(59,130,246,0.3); border-radius: 50%; border-top-color: #3b82f6; animation: spin 1s linear infinite;}
+    @keyframes spin {to {transform: rotate(360deg);}}
+    .config-section {display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem;}
+    .config-section label {min-width: 100px; margin: 0;}
+    
+    /* Nuevos estilos para la configuraci贸n compacta */
+    .config-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr) auto;
+      gap: 0.5rem;
+      align-items: end;
+      width: 100%;
+    }
+    
+    .config-item {
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .config-item label {
+      margin-bottom: 0.3rem;
+      font-size: 0.75rem;
+      color: var(--text-dim);
+    }
+    
+    .config-item input {
+      width: 100%;
+      padding: 0.4rem 0.5rem;
+      font-size: 0.85rem;
+    }
+    
+    .config-button {
+      padding: 0.4rem 0.8rem;
+      white-space: nowrap;
+    }
+    
+    /* Ajustes para la topbar */
+    .topbar-content {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 100%;
+    }
+    
+    .topbar-left {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    
+    .topbar-right {
+      display: flex;
+      align-items: center;
+    }
+	
+	.drawflow .drawflow-node {
+	  border-radius: 20px !important;
+	  overflow: hidden;
+	}
+	
+	/* Estilos para la barra de progreso */
+	.progress-bar {
+	  margin-top: 0.5rem;
+	  font-size: 0.8rem;
+	}
+
+	.progress-track {
+	  height: 6px;
+	  background-color: #1f2937;
+	  border-radius: 3px;
+	  overflow: hidden;
+	  margin-bottom: 0.3rem;
+	}
+
+	.progress-fill {
+	  height: 100%;
+	  background: linear-gradient(90deg, #3b82f6, #22c55e);
+	  border-radius: 3px;
+	  transition: width 0.3s ease;
+	  width: 0%;
+	}
+
+	.progress-text {
+	  text-align: center;
+	  color: #9ca3af;
+	  font-size: 0.75rem;
+	}
+
+	/* Estilos para el mensaje de estado */
+	.status-message {
+	  font-size: 0.8rem;
+	  margin-top: 0.3rem;
+	  font-style: italic;
+	  color: #9ca3af;
+	}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="topbar">
+      <div class="topbar-content">
+        <div class="topbar-left">
+          <div class="brand">馃 Monitor de Instalaciones RPA <small>(v1.0)</small></div>
+        </div>
+        <div class="topbar-right">
+          <div class="config-grid">
+            <div class="config-item">
+              <label for="apiEndpoint">API Base</label>
+              <input id="apiEndpoint" placeholder="URL base API" value="https://www.refactorii.com/api/tenant/" />
+            </div>
+            <div class="config-item">
+              <label for="userEmail">User Email</label>
+              <input id="userEmail" placeholder="user@example.com" value="wbsckt2@gmail.com" />
+            </div>
+            <div class="config-item">
+              <label for="companyId">Company ID</label>
+              <input id="companyId" placeholder="Company ID" value="bcb1a6db71f9973ff91c00103a33e873" />
+            </div>
+            <div class="config-item">
+              <label for="planId">Plan ID</label>
+              <input id="planId" placeholder="Plan ID" value="plan_1756001840994_6kna85081" />
+            </div>
+            <button class="btn config-button" id="btn-save-settings">鈿欙笍 Guardar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <aside class="left">
+      <div class="panel card">
+        <h3>Resumen de RPA</h3>
+        <div id="rpa-summary">
+          <div class="muted">Cargando informaci贸n de RPA...</div>
+        </div>
+      </div>
+      <div class="panel card">
+        <h3>Filtros</h3>
+        <div class="stack">
+          <select id="filter-status">
+            <option value="all">Todos los estados</option>
+            <option value="running">En ejecuci贸n</option>
+            <option value="stopped">Detenidos</option>
+            <option value="error">Con error</option>
+            <option value="inactive">Inactivos</option>
+          </select>
+          <select id="filter-type">
+            <option value="all">Todos los tipos</option>
+            <option value="invoice">Procesamiento de facturas</option>
+            <option value="data">Extracci贸n de datos</option>
+            <option value="report">Generaci贸n de reportes</option>
+          </select>
+          <button class="btn" id="btn-apply-filters">Aplicar Filtros</button>
+        </div>
+      </div>
+    </aside>
+
+    <main class="canvas-wrap">
+      <div id="drawflow"></div>
+    </main>
+
+    <aside class="right">
+      <div class="panel card" id="inspector">
+        <h3>Detalles del RPA</h3>
+        <div id="inspector-content" class="muted">Selecciona un nodo RPA para ver sus detalles.</div>
+      </div>
+      <div class="panel card">
+        <h3>Acciones</h3>
+        <div class="stack">
+          <button class="btn primary" id="btn-start-rpa">Iniciar RPA</button>
+          <button class="btn warn" id="btn-stop-rpa">Detener RPA</button>
+          <button class="btn" id="btn-restart-rpa">馃 Reiniciar RPA</button>
+          <button class="btn" id="btn-view-logs">馃搵 Ver Logs</button>
+        </div>
+      </div>
+      <div class="log" id="log"><pre>Bienvenido al Monitor de RPA. Los datos se cargar谩n autom谩ticamente.</pre></div>
+      <div class="footer">
+        <div class="muted">Sistema de Monitoreo RPA</div>
+        <a class="link" href="#" target="_blank">Documentaci贸n</a>
+      </div>
+    </aside>
+  </div>
+  
+    <script>
+	
+    // === Utilidades b谩sicas ===
+    const LS_SETTINGS = 'rpa-monitor:settings';
+
+    const $ = (sel, ctx=document) => ctx.querySelector(sel);
+    const $$ = (sel, ctx=document) => Array.from(ctx.querySelectorAll(sel));
+    const logEl = $('#log pre');
+    
+    function log(...args){
+      const t = new Date().toLocaleTimeString();
+      logEl.textContent += `[${t}] ` + args.map(a=> typeof a==='string'? a : JSON.stringify(a,null,2)).join(' ') + "\n";
+      logEl.parentElement.scrollTop = logEl.parentElement.scrollHeight;
+    }
+
+    function saveSettings(){
+      const s = { 
+        apiEndpoint: $('#apiEndpoint').value,
+        userEmail: $('#userEmail').value,
+        companyId: $('#companyId').value,
+        planId: $('#planId').value
+      };
+      localStorage.setItem(LS_SETTINGS, JSON.stringify(s));
+      log('鈿欙笍 Ajustes guardados.');
+      // Recargar datos despu茅s de guardar
+      loadRpaData();
+    }
+    
+    function loadSettings(){
+      try{ 
+        const s = JSON.parse(localStorage.getItem(LS_SETTINGS)||'{}'); 
+        // Establecer valores por defecto si no hay configuraci贸n guardada
+        $('#apiEndpoint').value = 'https://www.refactorii.com/api/tenant/';
+        $('#userEmail').value = 'wbsckt2@gmail.com';
+        $('#companyId').value = 'bcb1a6db71f9973ff91c00103a33e873';
+        $('#planId').value = 'rpa_plan_68aa763079f397714bc3011c';
+      }catch(e){
+        console.error('Error loading settings:', e);
+      }
+    }
+
+    // === Inicializar Drawflow ===
+    const editor = new Drawflow(document.getElementById('drawflow'));
+    editor.reroute = true;
+    editor.curve = 'Bezier';
+    editor.start();
+
+    // Variables para almacenar datos del plan
+    let currentPlanData = null;
+    let currentRpaData = null;
+
+    // Funci贸n para cargar datos del plan RPA
+    async function loadRpaPlan() {
+      const apiBase = $('#apiEndpoint').value;
+      const userEmail = $('#userEmail').value;
+      const companyId = $('#companyId').value;
+      const planId = $('#planId').value;
+      
+      if (!apiBase || !userEmail || !companyId || !planId) {
+        log('鉂?Por favor, configura todos los par谩metros (API Base, User Email, Company ID, Plan ID)');
+        return null;
+      }
+      
+      // Asegurar que la URL base termine con /
+      const normalizedApiBase = apiBase.endsWith('/') ? apiBase : apiBase + '/';
+      
+      // Construir la URL del endpoint del plan
+      const planUrl = `${normalizedApiBase}companies/${companyId}/rpa-plans/${planId}`;
+      
+      log(`馃摗 Cargando datos del plan: ${planUrl}`);
+      
+      try {
+        const response = await fetch(planUrl, {
+          headers: {
+            'x-user-email': userEmail
+          }
+        });
+        
+        if (!response.ok) {
+          if (response.status === 403) {
+            throw new Error('Acceso denegado. Verifica tu email y companyId.');
+          }
+          if (response.status === 404) {
+            throw new Error('Plan no encontrado. Verifica el Plan ID.');
+          }
+          throw new Error(`Error HTTP: ${response.status} - ${response.statusText}`);
+        }
+        
+        const planData = await response.json();
+        log('鉁?Datos del plan cargados correctamente');
+        return planData;
+        
+      } catch (error) {
+        log('鉂?Error al cargar datos del plan:', error.message);
+        console.error('Error detallado:', error);
+        return null;
+      }
+    }
+
+    // Funci贸n para cargar datos desde la API de monitoreo RPA
+    async function loadRpaData() {
+      const apiBase = $('#apiEndpoint').value;
+      const userEmail = $('#userEmail').value;
+      const companyId = $('#companyId').value;
+      
+      if (!apiBase || !userEmail || !companyId) {
+        log('鉂?Por favor, configura todos los par谩metros (API Base, User Email, Company ID)');
+        return;
+      }
+      
+      // Asegurar que la URL base termine con /
+      const normalizedApiBase = apiBase.endsWith('/') ? apiBase : apiBase + '/';
+      
+      // Cargar datos del plan primero
+      currentPlanData = await loadRpaPlan();
+      if (!currentPlanData) {
+        log('鈿狅笍 No se pudieron cargar los datos del plan. Usando datos de ejemplo.');
+        showSampleData();
+        return;
+      }
+      
+      // Construir la URL del endpoint de monitoreo
+      const monitoringUrl = `${normalizedApiBase}companies/${companyId}/rpa-monitoring`;
+      
+      log(`馃摗 Conectando con API: ${monitoringUrl}`);
+      
+      // Deshabilitar botones durante la carga
+      setButtonsState(true);
+      
+      try {
+        const response = await fetch(monitoringUrl, {
+          headers: {
+            'x-user-email': userEmail
+          }
+        });
+        
+        if (!response.ok) {
+          if (response.status === 403) {
+            throw new Error('Acceso denegado. Verifica tu email y companyId.');
+          }
+          if (response.status === 404) {
+            // Si no hay datos de monitoreo (404), es normal - no hay RPAs activos
+            log('鈩癸笍 No se encontraron datos de monitoreo (puede que no haya RPAs activos)');
+            const emptyData = {
+              rpas: [],
+              plan: currentPlanData.planName || "Plan Premium",
+              maxInstalaciones: currentPlanData.maxSessions || 5,
+              instalacionesContratadas: 0
+            };
+            currentRpaData = emptyData;
+            
+            // Actualizar el resumen
+            updateRpaSummary(emptyData);
+            
+            // Dibujar nodos en el canvas (todos inactivos)
+            drawRpaNodes(emptyData);
+            
+            log('鉁?Datos de RPA cargados correctamente (sin sesiones activas)');
+            return;
+          }
+          throw new Error(`Error HTTP: ${response.status} - ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        currentRpaData = data;
+        
+        // Validar estructura b谩sica del JSON
+        if (!data.rpas || !Array.isArray(data.rpas)) {
+          throw new Error('Formato de respuesta inv谩lido: se esperaba un array "rpas"');
+        }
+        
+        // Actualizar el resumen
+        updateRpaSummary(data);
+        
+        // Dibujar nodos en el canvas
+        drawRpaNodes(data);
+        
+        log('鉁?Datos de RPA cargados correctamente');
+        log(`馃搳 Se encontraron ${data.rpas.length} instalaciones RPA activas de ${currentPlanData.maxSessions} contratadas`);
+        
+      } catch (error) {
+        log('鉂?Error al cargar datos:', error.message);
+        console.error('Error detallado:', error);
+        
+        // Mostrar datos de ejemplo solo si es un error de red, no si es 404
+        if (!error.message.includes('404')) {
+          log('鈿狅笍 Mostrando datos de ejemplo...');
+          showSampleData();
+        }
+      } finally {
+        // Rehabilitar botones
+        setButtonsState(false);
+      }
+    }
+
+    // Funci贸n para mostrar datos de ejemplo si la API falla
+    function showSampleData() {
+      const sampleData = {
+        plan: "Plan Premium Procesamiento 1",
+        maxInstalaciones: 5,
+        instalacionesContratadas: 2,
+        rpas: [
+          { id: "rpa-demo-1", name: "Procesador Demo", type: "invoice", status: "running", machine: "SRV-DEMO", lastExecution: new Date().toLocaleString(), connections: 2 },
+          { id: "rpa-demo-2", name: "Extractor Demo", type: "data", status: "stopped", machine: "SRV-DEMO", lastExecution: new Date().toLocaleString(), connections: 1 }
+        ]
+      };
+      
+      currentPlanData = {
+        maxSessions: 5,
+        planName: "Plan Premium Procesamiento 1"
+      };
+      
+      updateRpaSummary(sampleData);
+      drawRpaNodes(sampleData);
+    }
+
+    // Controlar estado de los botones durante carga
+    function setButtonsState(loading) {
+      const buttons = ['#btn-save-settings', '#btn-apply-filters', '#btn-start-rpa', '#btn-stop-rpa', '#btn-restart-rpa', '#btn-view-logs'];
+      buttons.forEach(selector => {
+        const btn = $(selector);
+        if (btn) {
+          btn.disabled = loading;
+          if (loading && selector === '#btn-save-settings') {
+            btn.innerHTML = '<span class="loading"></span>';
+          } else if (selector === '#btn-save-settings') {
+            btn.innerHTML = '鈿欙笍 Guardar';
+          }
+        }
+      });
+    }
+
+    // Actualizar el panel de resumen
+    function updateRpaSummary(data) {
+      const summaryEl = $('#rpa-summary');
+      const running = data.rpas.filter(r => r.status === 'running').length;
+      const stopped = data.rpas.filter(r => r.status === 'stopped').length;
+      const errors = data.rpas.filter(r => r.status === 'error').length;
+      const inactive = currentPlanData ? currentPlanData.maxSessions - data.rpas.length : 0;
+      
+      summaryEl.innerHTML = `
+        <div>Plan: <strong>${data.plan || currentPlanData?.planName || 'N/A'}</strong></div>
+        <div>Instalaciones: <strong>${data.rpas.length}/${currentPlanData?.maxSessions || 0}</strong></div>
+        <div class="success">En ejecuci贸n: <strong>${running}</strong></div>
+        <div class="muted">Detenidos: <strong>${stopped}</strong></div>
+        <div class="danger">Con error: <strong>${errors}</strong></div>
+        <div class="muted">Inactivos: <strong>${inactive}</strong></div>
+      `;
+    }
+
+    // Dibujar nodos RPA en el canvas
+    function drawRpaNodes(data) {
+      editor.clear();
+      
+      // Obtener el n煤mero m谩ximo de sesiones del plan
+      const maxSessions = currentPlanData ? currentPlanData.maxSessions : data.maxInstalaciones || 5;
+      
+      // Configuraci贸n de dise帽o en grid
+      const cols = 5;
+      const horizontalSpacing = 200;
+      const verticalSpacing = 250;
+      
+      // Primero dibujar los nodos activos/inactivos del plan
+      for (let i = 0; i < maxSessions; i++) {
+        const row = Math.floor(i / cols);
+        const col = i % cols;
+        
+        const x = 70 + col * horizontalSpacing;
+        const y = 60 + row * verticalSpacing;
+        
+        // Verificar si existe un RPA para esta posici贸n
+        const rpa = data.rpas[i];
+        let html, nodeClass, nodeData;
+        
+        if (rpa) {
+		  // Nodo activo con datos reales
+		  html = `
+			<div class="title-box" style="border-radius: 20px 20px 0 0">
+			  <span>${rpa.name}</span>
+			  <span class="status-indicator ${rpa.status}"></span>
+			</div>
+			<div class="box" style="border-radius: 0 0 20px 20px">
+			  <div class="muted">${rpa.type}</div>
+			  <div class="rpa-info">
+				<div>ID: <strong>${rpa.id}</strong></div>
+				<div>M&aacute;quina: <strong>${rpa.machine}</strong></div>
+				<div>&Uacute;ltima ejec: <strong>${rpa.lastExecution}</strong></div>
+				<div>Conexiones: <strong>${rpa.connections}</strong></div>
+			  </div>
+			</div>
+		  `;
+		  nodeClass = `rpa ${rpa.status}`;
+		  nodeData = { ...rpa, isActive: true };
+		} else {
+		  // Nodo inactivo (contratado pero no activo)
+		  html = `
+			<div class="title-box" style="border-radius: 20px 20px 0 0">
+			  <span>RPA Inactivo ${i+1}</span>
+			  <span class="status-indicator stopped"></span>
+			</div>
+			<div class="box" style="border-radius: 0 0 20px 20px">
+			  <div class="muted">Esperando activación</div>
+			  <div class="rpa-info">
+				<div>ID: <strong>N/A</strong></div>
+				<div>M&aacute;quina: <strong>N/A</strong></div>
+				<div>&Uacute;ltima ejec: <strong>Nunca</strong></div>
+				<div>Conexiones: <strong>0</strong></div>
+			  </div>
+			</div>
+		  `;
+		  nodeClass = 'rpa inactive';
+		  nodeData = { 
+			id: `inactive-${i}`, 
+			name: `RPA Inactivo ${i+1}`, 
+			type: "inactive", 
+			status: "stopped", 
+			machine: "N/A", 
+			lastExecution: "Nunca", 
+			connections: 0,
+			isActive: false 
+		  };
+		}
+        
+        editor.addNode(
+          nodeData.id,
+          0,          // inputs
+          0,          // outputs
+          x, y,       // posici贸n
+          nodeClass,  // class
+          nodeData,   // datos
+          html        // html
+        );
+      }
+    }
+
+    // Inspector din谩mico
+    function renderInspector(nodeId){
+      const cont = $('#inspector-content');
+      if(!nodeId){ 
+        cont.innerHTML = '<div class="muted">Selecciona un nodo RPA para ver sus detalles.</div>'; 
+        return; 
+      }
+      
+      const node = editor.getNodeFromId(nodeId);
+      const data = node?.data || {};
+      
+      if (!data.isActive) {
+        cont.innerHTML = `
+          <div class="stack">
+            <div class="muted">Este RPA est谩 inactivo</div>
+            <div><strong>Nombre:</strong> ${data.name}</div>
+            <div><strong>Estado:</strong> <span class="muted">inactivo</span></div>
+            <div><strong>Disponible para activaci贸n</strong></div>
+          </div>
+        `;
+        // Deshabilitar botones de acciones para nodos inactivos
+        $('#btn-start-rpa').disabled = false;
+        $('#btn-stop-rpa').disabled = true;
+        $('#btn-restart-rpa').disabled = true;
+        $('#btn-view-logs').disabled = true;
+        return;
+      }
+      
+      cont.innerHTML = `
+        <div class="stack">
+          <div><strong>Nombre:</strong> ${data.name}</div>
+          <div><strong>ID:</strong> ${data.id}</div>
+          <div><strong>Tipo:</strong> ${data.type}</div>
+          <div><strong>Estado:</strong> <span class="${data.status === 'running' ? 'success' : data.status === 'error' ? 'danger' : 'muted'}">${data.status}</span></div>
+          <div><strong>M谩quina:</strong> ${data.machine}</div>
+          <div><strong>脷ltima ejecuci贸n:</strong> ${data.lastExecution}</div>
+          <div><strong>Conexiones:</strong> ${data.connections}</div>
+        </div>
+      `;
+      
+      // Habilitar botones seg煤n el estado
+      $('#btn-start-rpa').disabled = data.status === 'running';
+      $('#btn-stop-rpa').disabled = data.status !== 'running';
+      $('#btn-restart-rpa').disabled = false;
+      $('#btn-view-logs').disabled = false;
+    }
+
+    // Aplicar filtros a los nodos
+    function applyFilters() {
+      const statusFilter = $('#filter-status').value;
+      const typeFilter = $('#filter-type').value;
+      
+      $$('.drawflow-node').forEach(node => {
+        const nodeData = editor.getNodeFromId(node.dataset.id)?.data;
+        let showNode = true;
+        
+        if (statusFilter !== 'all') {
+          if (statusFilter === 'inactive') {
+            showNode = !nodeData.isActive;
+          } else {
+            showNode = nodeData.status === statusFilter;
+          }
+        }
+        
+        if (showNode && typeFilter !== 'all') {
+          showNode = nodeData.type === typeFilter;
+        }
+        
+        node.style.display = showNode ? 'block' : 'none';
+      });
+    }
+
+    // Eventos de nodos
+    editor.on('nodeSelected', id => renderInspector(id));
+    editor.on('nodeUnselected', () => {
+      renderInspector(null);
+      // Restablecer botones
+      $('#btn-start-rpa').disabled = true;
+      $('#btn-stop-rpa').disabled = true;
+      $('#btn-restart-rpa').disabled = true;
+      $('#btn-view-logs').disabled = true;
+    });
+
+    // === Configuraci贸n de botones ===
+    $('#btn-save-settings').onclick = saveSettings;
+    $('#btn-apply-filters').onclick = applyFilters;
+    
+    $('#btn-start-rpa').onclick = () => {
+      const selectedNode = editor.selected_node;
+      if (selectedNode) {
+        const nodeData = editor.getNodeFromId(selectedNode)?.data;
+        if (nodeData && !nodeData.isActive) {
+          log('鈿狅笍 No se puede iniciar un RPA inactivo. Debe ser activado primero.');
+          return;
+        }
+        
+        log(`鈻?Iniciando RPA: ${nodeData.name}`);
+        const nodeEl = editor.canvas.querySelector(`.drawflow-node[data-id="${selectedNode}"]`);
+        if (nodeEl) {
+          nodeEl.classList.add('running');
+          const statusIndicator = nodeEl.querySelector('.status-indicator');
+          if (statusIndicator) {
+            statusIndicator.classList.add('running');
+            statusIndicator.classList.remove('stopped', 'error');
+          }
+        }
+      } else {
+        log('鈿狅笍 Selecciona un RPA primero');
+      }
+    };
+    
+    $('#btn-stop-rpa').onclick = () => {
+      const selectedNode = editor.selected_node;
+      if (selectedNode) {
+        const nodeData = editor.getNodeFromId(selectedNode)?.data;
+        log(`鈴?Deteniendo RPA: ${nodeData.name}`);
+        const nodeEl = editor.canvas.querySelector(`.drawflow-node[data-id="${selectedNode}"]`);
+        if (nodeEl) {
+          nodeEl.classList.remove('running');
+          const statusIndicator = nodeEl.querySelector('.status-indicator');
+          if (statusIndicator) {
+            statusIndicator.classList.remove('running');
+            statusIndicator.classList.add('stopped');
+          }
+        }
+      } else {
+        log('鈿狅笍 Selecciona un RPA primero');
+      }
+    };
+
+	// Variable global para el socket
+	let socket = null;
+
+	// Función para configurar Socket.IO
+	function setupSocketListeners() {
+	  const userEmail = $('#userEmail').value;
+	  
+	  if (!userEmail) {
+		log('?? Email no configurado para Socket.IO');
+		return;
+	  }
+	  
+	  // Conectar a Socket.IO server
+	  socket = io("https://www.refactorii.com");
+	  
+	  socket.on("connect", () => {
+		log("? Conectado a Socket.IO");
+		socket.emit("join", userEmail);
+	  });
+	  
+	  socket.on("disconnect", () => {
+		log("? Desconectado de Socket.IO");
+	  });
+	  
+	  socket.on("connect_error", (err) => {
+		log("? Error al conectar a Socket.IO:", err.message);
+	  });
+	  
+	  // Escuchar eventos de RPA
+	  socket.on("rpa_execution_started", (data) => {
+		updateNodeStatus(data.rpaId, 'running', 'Ejecución iniciada');
+		location.reload();
+		log(`?? RPA ${data.rpaId} iniciado ejecucion data`);
+	  });
+	  
+	  socket.on("rpa_execution_ended", (data) => {
+		const status = data.status === 'completed' ? 'stopped' : 'error';
+		updateNodeStatus(data.rpaId, status, data.message);
+		location.reload();
+		log(`?? RPA ${data.rpaId} finalizado: ${data.status} - ${data.message}`);
+	  });
+	  
+	  socket.on("rpa_execution_progress", (data) => {
+		log(`?? RPA ${data.rpaId}: ${data.message} (${data.progress}%)`);
+		updateNodeProgress(data.rpaId, data.progress, data.message);
+	  });
+	}
+
+	// Función para actualizar completamente el contenido de un nodo
+	function updateNodeStatus(rpaId, status, message) {
+	  const node = findNodeByRpaId(rpaId);
+	  if (node) {
+		// Actualizar los datos del nodo
+		node.data.status = status;
+		node.data.lastMessage = message;
+		node.data.lastUpdate = new Date().toLocaleString();
+		
+		const nodeEl = editor.canvas.querySelector(`.drawflow-node[data-id="${node.id}"]`);
+		if (nodeEl) {
+		  // Regenerar el HTML completo del nodo
+		  editor.updateNodeDataFromId(node.id, node.data);
+		  const nodeEl = editor.getNodeFromId(node.id).html;
+		  nodeEl.innerHTML = generateNodeHtml(node.data);
+		  
+		  // Actualizar clases CSS
+		  nodeEl.classList.remove('running', 'stopped', 'error', 'inactive');
+		  nodeEl.classList.add(status);
+		  
+		  // Aplicar border-radius
+		  const titleBox = nodeEl.querySelector('.title-box');
+		  const box = nodeEl.querySelector('.box');
+		  if (titleBox) titleBox.style.borderRadius = '20px 20px 0 0';
+		  if (box) box.style.borderRadius = '0 0 20px 20px';
+		}
+	  }
+	}
+
+	// Función para generar el HTML de un nodo
+	function generateNodeHtml(rpaData) {
+	  const isActive = rpaData.isActive;
+	  const status = rpaData.status || 'stopped';
+	  const lastExecution = rpaData.lastUpdate || rpaData.lastExecution || new Date().toLocaleString();
+	  
+	  if (isActive) {
+		return `
+		  <div class="title-box" style="border-radius: 20px 20px 0 0">
+			<span>${rpaData.name}</span>
+			<span class="status-indicator ${status}"></span>
+		  </div>
+		  <div class="box" style="border-radius: 0 0 20px 20px">
+			<div class="muted">${rpaData.type}</div>
+			<div class="rpa-info">
+			  <div>ID: <strong>${rpaData.id}</strong></div>
+			  <div>Máquina: <strong>${rpaData.machine}</strong></div>
+			  <div>última ejec: <strong>${lastExecution}</strong></div>
+			  <div>Conexiones: <strong>${rpaData.connections || 0}</strong></div>
+			</div>
+			<div class="status-message muted">${rpaData.lastMessage || ''}</div>
+		  </div>
+		`;
+	  } else {
+		return `
+		  <div class="title-box" style="border-radius: 20px 20px 0 0">
+			<span>${rpaData.name}</span>
+			<span class="status-indicator stopped"></span>
+		  </div>
+		  <div class="box" style="border-radius: 0 0 20px 20px">
+			<div class="muted">Esperando activación</div>
+			<div class="rpa-info">
+			  <div>ID: <strong>N/A</strong></div>
+			  <div>Máquina: <strong>N/A</strong></div>
+			  <div>última ejec: <strong>Nunca</strong></div>
+			  <div>Conexiones: <strong>0</strong></div>
+			</div>
+		  </div>
+		`;
+	  }
+	}
+
+	// Función para actualizar el progreso de un nodo
+	function updateNodeProgress(rpaId, progress, message) {
+	  const node = findNodeByRpaId(rpaId);
+	  if (node) {
+		const nodeEl = editor.canvas.querySelector(`.drawflow-node[data-id="${node.id}"]`);
+		if (nodeEl) {
+		  // Buscar o crear la barra de progreso
+		  let progressBar = nodeEl.querySelector('.progress-bar');
+		  if (!progressBar) {
+			progressBar = document.createElement('div');
+			progressBar.className = 'progress-bar';
+			progressBar.innerHTML = `
+			  <div class="progress-track">
+				<div class="progress-fill"></div>
+			  </div>
+			  <div class="progress-text">0%</div>
+			`;
+			nodeEl.querySelector('.box').appendChild(progressBar);
+		  }
+		  
+		  // Actualizar la barra de progreso
+		  const progressFill = progressBar.querySelector('.progress-fill');
+		  const progressText = progressBar.querySelector('.progress-text');
+		  progressFill.style.width = `${progress}%`;
+		  progressText.textContent = `${progress}%`;
+		  
+		  // Actualizar el mensaje de estado
+		  updateNodeStatus(rpaId, 'running', message);
+		}
+	  }
+	}
+
+	// Función para buscar un nodo por RPA ID
+	function findNodeByRpaId(rpaId) {
+	  const nodes = editor.drawflow.drawflow.Home.data;
+	  for (let nodeId in nodes) {
+		if (nodes[nodeId].data && nodes[nodeId].data.id === rpaId) {
+		  return nodes[nodeId];
+		}
+	  }
+	  return null;
+	}
+
+    // === Estado inicial ===
+    (function init(){
+      loadSettings();
+      log('鉁?Monitor de RPA inicializado.');
+      log('馃挕 Cargando datos autom谩ticamente...');
+      // Configurar listeners de Socket.IO
+	  setupSocketListeners();
+      // Cargar datos autom谩ticamente al iniciar
+      setTimeout(() => {
+        loadRpaData();
+      }, 1000);
+    })();
+	
+  </script>
+</body>
+</html>
