@@ -630,7 +630,7 @@
 				<div>ID: <strong>${rpa.id}</strong></div>
 				<div>M&aacute;quina: <strong>${rpa.machine}</strong></div>
 				<div>&Uacute;ltima ejec: <strong>${rpa.lastExecution}</strong></div>
-				<div>Conexiones: <strong>${rpa.connections}</strong></div>
+				<div>Conexión: <strong>${rpa.connections}</strong></div>
 			  </div>
 			</div>
 		  `;
@@ -649,7 +649,7 @@
 				<div>ID: <strong>N/A</strong></div>
 				<div>M&aacute;quina: <strong>N/A</strong></div>
 				<div>&Uacute;ltima ejec: <strong>Nunca</strong></div>
-				<div>Conexiones: <strong>0</strong></div>
+				<div>Conexión: <strong>0</strong></div>
 			  </div>
 			</div>
 		  `;
@@ -714,7 +714,7 @@
           <div><strong>Estado:</strong> <span class="${data.status === 'running' ? 'success' : data.status === 'error' ? 'danger' : 'muted'}">${data.status}</span></div>
           <div><strong>MÃ¡quina:</strong> ${data.machine}</div>
           <div><strong>Ãltima ejecuciÃ³n:</strong> ${data.lastExecution}</div>
-          <div><strong>Conexiones:</strong> ${data.connections}</div>
+          <div><strong>Conexión:</strong> ${data.connections}</div>
         </div>
       `;
       
@@ -903,7 +903,7 @@
 			  <div>ID: <strong>${rpaData.id}</strong></div>
 			  <div>M¨¢quina: <strong>${rpaData.machine}</strong></div>
 			  <div>¨²ltima ejec: <strong>${lastExecution}</strong></div>
-			  <div>Conexiones: <strong>${rpaData.connections || 0}</strong></div>
+			  <div>Conexión: <strong>${rpaData.connections || 0}</strong></div>
 			</div>
 			<div class="status-message muted">${rpaData.lastMessage || ''}</div>
 		  </div>
@@ -920,7 +920,7 @@
 			  <div>ID: <strong>N/A</strong></div>
 			  <div>M¨¢quina: <strong>N/A</strong></div>
 			  <div>¨²ltima ejec: <strong>Nunca</strong></div>
-			  <div>Conexiones: <strong>0</strong></div>
+			  <div>Conexión: <strong>0</strong></div>
 			</div>
 		  </div>
 		`;
@@ -987,3 +987,4 @@
 </body>
 
 </html>
+
